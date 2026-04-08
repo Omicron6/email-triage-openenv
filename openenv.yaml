@@ -1,0 +1,19 @@
+name: email-triage
+version: "1.0"
+entrypoint: inference.py
+language: python
+framework: openenv
+
+tasks:
+  - easy
+  - medium
+  - hard
+
+resources:
+  cpu: 2
+  memory_gb: 8
+
+notes:
+  - deterministic
+  - no-randomness
+  - rule-based-environment
