@@ -17,11 +17,39 @@ app = FastAPI(title="Email Triage OpenEnv")
 _env: EmailTriageEnv | None = None
 
 
-def _normalize_task(payload: Dict[str, Any]) -> str:
-    task = payload.get("task") or payload.get("task_name") or payload.get("taskType")
-    if not isinstance(task, str) or task not in {"easy", "medium", "hard"}:
-        raise HTTPException(status_code=400, detail="task must be one of easy|medium|hard")
-    return task
+def _normalize_task(payload: Dict[str, Any], query_task: str | None = None) -> str:
+    allowed = {"easy", "medium", "hard"}
+
+    candidates: list[Any] = [
+        query_task,
+        payload.get("task"),
+        payload.get("task_name"),
+        payload.get("taskType"),
+        payload.get("task_type"),
+        payload.get("taskId"),
+        payload.get("task_id"),
+        payload.get("difficulty"),
+        payload.get("level"),
+        payload.get("name"),
+        payload.get("id"),
+    ]
+
+    for candidate in candidates:
+        value = candidate
+        if isinstance(value, dict):
+            value = value.get("task") or value.get("name") or value.get("id") or value.get("type")
+        if not isinstance(value, str):
+            continue
+
+        normalized = value.strip().lower()
+        if normalized in allowed:
+            return normalized
+
+        for option in allowed:
+            if option in normalized:
+                return option
+
+    raise HTTPException(status_code=400, detail="task must be one of easy|medium|hard")
 
 
 def _extract_action(payload: Dict[str, Any]) -> str:
@@ -33,9 +61,12 @@ def _extract_action(payload: Dict[str, Any]) -> str:
 
 @app.post("/reset")
 @app.post("/openenv/reset")
-def openenv_reset(payload: Dict[str, Any] = Body(default_factory=dict)):
+def openenv_reset(
+    payload: Dict[str, Any] = Body(default_factory=dict),
+    task: str | None = Query(default=None),
+):
     global _env
-    task = _normalize_task(payload)
+    task = _normalize_task(payload, query_task=task)
     _env = EmailTriageEnv()
     observation = _env.reset(task)
     return JSONResponse(
