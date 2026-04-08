@@ -9,7 +9,11 @@ description = "OpenEnv-compatible email triage environment"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+  "openenv-core>=0.2.0",
   "fastapi",
   "uvicorn[standard]",
   "openai",
 ]
+
+[project.scripts]
+server = "server.app:main"
