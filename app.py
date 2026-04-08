@@ -2,14 +2,75 @@ from __future__ import annotations
 
 from contextlib import redirect_stdout
 from io import StringIO
+from typing import Any, Dict
 
-from fastapi import FastAPI, Query
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi import Body, FastAPI, HTTPException, Query
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
+from env.email_env import EmailTriageEnv
 from inference import run_episode
 
 
 app = FastAPI(title="Email Triage OpenEnv")
+
+
+_env: EmailTriageEnv | None = None
+
+
+def _normalize_task(payload: Dict[str, Any]) -> str:
+    task = payload.get("task") or payload.get("task_name") or payload.get("taskType")
+    if not isinstance(task, str) or task not in {"easy", "medium", "hard"}:
+        raise HTTPException(status_code=400, detail="task must be one of easy|medium|hard")
+    return task
+
+
+def _extract_action(payload: Dict[str, Any]) -> str:
+    action = payload.get("action")
+    if not isinstance(action, str) or not action.strip():
+        raise HTTPException(status_code=400, detail="action must be a non-empty string")
+    return action.strip()
+
+
+@app.post("/reset")
+@app.post("/openenv/reset")
+def openenv_reset(payload: Dict[str, Any] = Body(default_factory=dict)):
+    global _env
+    task = _normalize_task(payload)
+    _env = EmailTriageEnv()
+    observation = _env.reset(task)
+    return JSONResponse(
+        {
+            "observation": observation,
+            "done": False,
+            "info": {"task": task},
+        }
+    )
+
+
+@app.post("/step")
+@app.post("/openenv/step")
+def openenv_step(payload: Dict[str, Any] = Body(default_factory=dict)):
+    if _env is None:
+        raise HTTPException(status_code=400, detail="Call reset before step")
+
+    action = _extract_action(payload)
+    observation, reward, done, info = _env.step(action)
+    return JSONResponse(
+        {
+            "observation": observation,
+            "reward": reward,
+            "done": done,
+            "info": info,
+        }
+    )
+
+
+@app.get("/state")
+@app.get("/openenv/state")
+def openenv_state():
+    if _env is None:
+        raise HTTPException(status_code=400, detail="Call reset before state")
+    return JSONResponse(_env.state())
 
 
 @app.get("/", response_class=HTMLResponse)
