@@ -100,10 +100,9 @@ def run_episode(task: str, benchmark_name: str) -> None:
     model_name = os.getenv("MODEL_NAME", "meta-llama/Llama-3.1-8B-Instruct")
     hf_token = os.getenv("HF_TOKEN")
 
-    if not hf_token:
-        raise ValueError("HF_TOKEN is required")
-
-    client = build_client(api_base_url=api_base_url, hf_token=hf_token)
+    client = None
+    if hf_token:
+        client = build_client(api_base_url=api_base_url, hf_token=hf_token)
 
     env = EmailTriageEnv()
     observation = env.reset(task)
@@ -119,7 +118,9 @@ def run_episode(task: str, benchmark_name: str) -> None:
     try:
         while not done:
             step_num += 1
-            action = llm_pick_action(client, model_name, task, observation)
+            action = None
+            if client:
+                action = llm_pick_action(client, model_name, task, observation)
             if not action:
                 action = rule_based_fallback(task, observation)
             action = action.strip().rstrip(".")
