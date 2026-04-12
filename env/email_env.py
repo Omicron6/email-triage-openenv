@@ -32,6 +32,9 @@ class EmailTriageEnv:
         },
     ]
 
+    MIN_SCORE = 0.01
+    MAX_SCORE = 0.99
+
     def __init__(self) -> None:
         self._dataset_index = -1
         self._current: Optional[Dict[str, str]] = None
@@ -117,6 +120,13 @@ class EmailTriageEnv:
 
         return all(self._hard_correct.values())
 
+    def _bounded_score(self, score: float) -> float:
+        if score <= self.MIN_SCORE:
+            return self.MIN_SCORE
+        if score >= self.MAX_SCORE:
+            return self.MAX_SCORE
+        return score
+
     def _step_easy(self, action: str, kind: str, value: str) -> Tuple[Dict[str, object], float, bool, Dict[str, object]]:
         if kind != "classify":
             return self._invalid(action, "wrong_action_for_task")
@@ -130,7 +140,7 @@ class EmailTriageEnv:
             "error": None,
             "success": reward == 1.0,
             "task_type": self._task_type,
-            "score": reward,
+            "score": self._bounded_score(reward),
         }
         return self._observation(), reward, True, info
 
@@ -147,7 +157,7 @@ class EmailTriageEnv:
             "error": None,
             "success": reward == 1.0,
             "task_type": self._task_type,
-            "score": reward,
+            "score": self._bounded_score(reward),
         }
         return self._observation(), reward, True, info
 
@@ -168,7 +178,7 @@ class EmailTriageEnv:
                 "error": None,
                 "success": False,
                 "task_type": self._task_type,
-                "score": sum(self._rewards),
+                "score": self._bounded_score(sum(self._rewards)),
             }
             return self._observation(), reward, False, info
 
@@ -184,7 +194,7 @@ class EmailTriageEnv:
                 "error": None,
                 "success": False,
                 "task_type": self._task_type,
-                "score": sum(self._rewards),
+                "score": self._bounded_score(sum(self._rewards)),
             }
             return self._observation(), reward, False, info
 
@@ -200,7 +210,7 @@ class EmailTriageEnv:
             "error": None,
             "success": all(self._hard_correct.values()),
             "task_type": self._task_type,
-            "score": sum(self._rewards),
+            "score": self._bounded_score(sum(self._rewards)),
         }
         return self._observation(), reward, True, info
 
@@ -221,7 +231,7 @@ class EmailTriageEnv:
             "error": error,
             "success": False,
             "task_type": self._task_type,
-            "score": sum(r for r in self._rewards if r > 0.0),
+            "score": self._bounded_score(sum(r for r in self._rewards if r > 0.0)),
         }
         return self._observation(), reward, False, info
 
