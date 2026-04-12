@@ -50,12 +50,14 @@ foreach ($task in $tasks) {
         }
     }
 
-    if ($endLine -match '^\[END\] success=(true|false) steps=(\d+) rewards=(.*)$') {
+    if ($endLine -match '^\[END\] success=(true|false) steps=(\d+) score=(-?\d+\.\d{2}) rewards=(.*)$') {
         $stepsFromEnd = [int]$Matches[2]
-        $rewardsFromEnd = $Matches[3]
+        $scoreFromEnd = [double]$Matches[3]
+        $rewardsFromEnd = $Matches[4]
         $expectedRewards = ($rewardFromSteps -join ',')
 
         Assert-Condition ($stepsFromEnd -eq $stepLines.Count) "steps mismatch for task '$task' (END=$stepsFromEnd, STEP lines=$($stepLines.Count))"
+        Assert-Condition ($scoreFromEnd -gt 0.0 -and $scoreFromEnd -lt 1.0) "score out of range for task '$task' (score=$scoreFromEnd)"
         Assert-Condition ($rewardsFromEnd -eq $expectedRewards) "rewards mismatch for task '$task' (END='$rewardsFromEnd', STEP='$expectedRewards')"
     }
     else {

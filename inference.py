@@ -18,6 +18,8 @@ except Exception:
 BENCHMARK_NAME = "email-triage"
 DEFAULT_TASK = "easy"
 TASK_ENV_VARS = ("OPENENV_TASK", "TASK", "EVAL_TASK")
+MIN_SCORE = 0.01
+MAX_SCORE = 0.99
 
 
 def build_client(api_base_url: str, hf_token: str) -> Any:
@@ -37,6 +39,14 @@ def sanitize_error(error: object) -> str:
     if error is None:
         return "null"
     return str(error).replace("\n", " ").replace("\r", " ").strip() or "null"
+
+
+def bounded_score(score: float) -> float:
+    if score <= MIN_SCORE:
+        return MIN_SCORE
+    if score >= MAX_SCORE:
+        return MAX_SCORE
+    return score
 
 
 def resolve_task(cli_task: str | None) -> str:
@@ -130,7 +140,7 @@ def run_episode(task: str, benchmark_name: str) -> None:
 
     if _EmailTriageEnv is None:
         print("[STEP] step=1 action=init_env reward=0.00 done=true error=env_import_failed")
-        print("[END] success=false steps=1 rewards=0.00")
+        print("[END] success=false steps=1 score=0.01 rewards=0.00")
         return
 
     client = None
@@ -150,7 +160,7 @@ def run_episode(task: str, benchmark_name: str) -> None:
             "done=true "
             f"error={err_text}"
         )
-        print("[END] success=false steps=1 rewards=0.00")
+        print("[END] success=false steps=1 score=0.01 rewards=0.00")
         return
 
     step_num = 0
@@ -158,6 +168,7 @@ def run_episode(task: str, benchmark_name: str) -> None:
     done = False
     success = False
     forced_stop = False
+    final_score = MIN_SCORE
 
     try:
         while not done:
@@ -172,6 +183,10 @@ def run_episode(task: str, benchmark_name: str) -> None:
             observation, reward, done, info = env.step(action)
             rewards_list.append(reward)
             err_text = sanitize_error(info.get("error"))
+            if isinstance(info, dict):
+                info_score = info.get("score")
+                if isinstance(info_score, (int, float)):
+                    final_score = bounded_score(float(info_score))
 
             print(
                 "[STEP] "
@@ -202,8 +217,11 @@ def run_episode(task: str, benchmark_name: str) -> None:
             env.close()
         rewards_csv = ",".join(f"{reward:.2f}" for reward in rewards_list)
         steps = len(rewards_list)
+        if steps > 0 and final_score == MIN_SCORE:
+            positive_sum = sum(r for r in rewards_list if r > 0)
+            final_score = bounded_score(positive_sum)
         print(
-            f"[END] success={format_bool(success)} steps={steps} rewards={rewards_csv}"
+            f"[END] success={format_bool(success)} steps={steps} score={final_score:.2f} rewards={rewards_csv}"
         )
 
 
@@ -231,4 +249,4 @@ if __name__ == "__main__":
             "done=true "
             f"error={err_text}"
         )
-        print("[END] success=false steps=1 rewards=0.00")
+        print("[END] success=false steps=1 score=0.01 rewards=0.00")
