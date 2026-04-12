@@ -61,6 +61,18 @@ def resolve_task(cli_task: str | None) -> str:
     return DEFAULT_TASK
 
 
+def resolve_tasks(cli_task: str | None) -> list[str]:
+    if cli_task:
+        return [cli_task]
+
+    for env_key in TASK_ENV_VARS:
+        env_task = os.getenv(env_key)
+        if env_task in {"easy", "medium", "hard"}:
+            return [env_task]
+
+    return ["easy", "medium", "hard"]
+
+
 def infer_expected(email: str) -> tuple[str, str, str]:
     email_l = email.lower()
     if "iphone" in email_l or "free" in email_l:
@@ -230,9 +242,10 @@ def main() -> None:
     parser.add_argument("--task", choices=["easy", "medium", "hard"], required=False)
     parser.add_argument("--benchmark", default=BENCHMARK_NAME)
     args, _ = parser.parse_known_args()
-    task = resolve_task(args.task)
+    tasks = resolve_tasks(args.task)
 
-    run_episode(task=task, benchmark_name=args.benchmark)
+    for task in tasks:
+        run_episode(task=task, benchmark_name=args.benchmark)
 
 
 if __name__ == "__main__":
