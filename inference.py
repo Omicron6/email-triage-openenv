@@ -2,17 +2,31 @@ from __future__ import annotations
 
 import argparse
 import os
+from typing import Any
 
-from openai import OpenAI
+try:
+    from openai import OpenAI as _OpenAI
+except Exception:
+    _OpenAI = None
 
-from env.email_env import EmailTriageEnv
+try:
+    from env.email_env import EmailTriageEnv as _EmailTriageEnv
+except Exception:
+    _EmailTriageEnv = None
 
 
 BENCHMARK_NAME = "email-triage"
+DEFAULT_TASK = "easy"
+TASK_ENV_VARS = ("OPENENV_TASK", "TASK", "EVAL_TASK")
 
 
-def build_client(api_base_url: str, hf_token: str) -> OpenAI:
-    return OpenAI(base_url=api_base_url, api_key=hf_token)
+def build_client(api_base_url: str, hf_token: str) -> Any:
+    if _OpenAI is None:
+        return None
+    try:
+        return _OpenAI(base_url=api_base_url, api_key=hf_token)
+    except Exception:
+        return None
 
 
 def format_bool(value: bool) -> str:
@@ -23,6 +37,18 @@ def sanitize_error(error: object) -> str:
     if error is None:
         return "null"
     return str(error).replace("\n", " ").replace("\r", " ").strip() or "null"
+
+
+def resolve_task(cli_task: str | None) -> str:
+    if cli_task:
+        return cli_task
+
+    for env_key in TASK_ENV_VARS:
+        env_task = os.getenv(env_key)
+        if env_task in {"easy", "medium", "hard"}:
+            return env_task
+
+    return DEFAULT_TASK
 
 
 def infer_expected(email: str) -> tuple[str, str, str]:
@@ -62,7 +88,7 @@ def rule_based_fallback(task: str, observation: dict) -> str:
 
 
 def llm_pick_action(
-    client: OpenAI,
+    client: Any,
     model_name: str,
     task: str,
     observation: dict,
@@ -100,14 +126,32 @@ def run_episode(task: str, benchmark_name: str) -> None:
     model_name = os.getenv("MODEL_NAME", "meta-llama/Llama-3.1-8B-Instruct")
     hf_token = os.getenv("HF_TOKEN")
 
+    print(f"[START] task={task} env={benchmark_name} model={model_name or 'none'}")
+
+    if _EmailTriageEnv is None:
+        print("[STEP] step=1 action=init_env reward=0.00 done=true error=env_import_failed")
+        print("[END] success=false steps=1 rewards=0.00")
+        return
+
     client = None
     if hf_token:
         client = build_client(api_base_url=api_base_url, hf_token=hf_token)
 
-    env = EmailTriageEnv()
-    observation = env.reset(task)
-
-    print(f"[START] task={task} env={benchmark_name} model={model_name or 'none'}")
+    try:
+        env = _EmailTriageEnv()
+        observation = env.reset(task)
+    except Exception as exc:
+        err_text = sanitize_error(exc)
+        print(
+            "[STEP] "
+            "step=1 "
+            "action=init_env "
+            "reward=0.00 "
+            "done=true "
+            f"error={err_text}"
+        )
+        print("[END] success=false steps=1 rewards=0.00")
+        return
 
     step_num = 0
     rewards_list: list[float] = []
@@ -165,12 +209,26 @@ def run_episode(task: str, benchmark_name: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--task", choices=["easy", "medium", "hard"], required=True)
+    parser.add_argument("--task", choices=["easy", "medium", "hard"], required=False)
     parser.add_argument("--benchmark", default=BENCHMARK_NAME)
-    args = parser.parse_args()
+    args, _ = parser.parse_known_args()
+    task = resolve_task(args.task)
 
-    run_episode(task=args.task, benchmark_name=args.benchmark)
+    run_episode(task=task, benchmark_name=args.benchmark)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        err_text = sanitize_error(exc)
+        print(f"[START] task={DEFAULT_TASK} env={BENCHMARK_NAME} model=none")
+        print(
+            "[STEP] "
+            "step=1 "
+            "action=fatal_error "
+            "reward=0.00 "
+            "done=true "
+            f"error={err_text}"
+        )
+        print("[END] success=false steps=1 rewards=0.00")
